@@ -11,6 +11,12 @@ const propertySchema = new mongoose.Schema({
     trim: true,
     maxlength: [200, 'Property name cannot exceed 200 characters']
   },
+  type: {
+    type: String,
+    required: [true, 'Property type is required'],
+    enum: ['hotel', 'airbnb', 'posada'],
+    default: 'hotel'
+  },
   description: {
     type: String,
     trim: true,

@@ -20,46 +20,17 @@ export const createGuestSchema = z.object({
     .toLowerCase()
     .optional(),
   
-  phone: z.object({
-    primary: z.string()
-      .min(1, 'Primary phone number is required')
-      .trim(),
-    secondary: z.string().trim().optional()
-  }),
-  
-  identification: z.object({
-    type: z.enum(['passport', 'national_id', 'driver_license', 'other']),
-    number: z.string()
-      .min(1, 'Identification number is required')
-      .trim(),
-    expiryDate: z.coerce.date().optional(),
-    issuingCountry: z.string().trim().optional()
-  }),
-  
-  address: z.object({
-    street: z.string().trim().optional(),
-    city: z.string().trim().optional(),
-    state: z.string().trim().optional(),
-    postalCode: z.string().trim().optional(),
-    country: z.string().trim().optional()
-  }).optional(),
+  phone: z.string()
+    .min(1, 'Phone number is required')
+    .trim(),
   
   dateOfBirth: z.coerce.date().optional(),
   nationality: z.string().trim().optional(),
   
   emergencyContact: z.object({
     name: z.string().trim().optional(),
-    relationship: z.string().trim().optional(),
+    relationship: z.enum(['spouse', 'parent', 'sibling', 'child', 'friend', 'other']).optional(),
     phone: z.string().trim().optional()
-  }).optional(),
-  
-  preferences: z.object({
-    roomType: z.enum(['room', 'suite', 'apartment']).optional(),
-    smokingRoom: z.boolean().optional(),
-    floor: z.enum(['ground', 'high', 'any']).optional(),
-    bedType: z.enum(['single', 'double', 'queen', 'king', 'twin']).optional(),
-    dietaryRestrictions: z.array(z.string().trim()).optional(),
-    accessibility: z.array(z.string().trim()).optional()
   }).optional(),
   
   notes: z.string()
@@ -102,34 +73,15 @@ export const guestResponseSchema = z.object({
   lastName: z.string(),
   fullName: z.string(),
   email: z.string().optional(),
-  phone: z.object({
-    primary: z.string(),
-    secondary: z.string().optional()
-  }),
-  identification: z.object({
-    type: z.string(),
-    number: z.string(),
-    expiryDate: z.date().optional(),
-    issuingCountry: z.string().optional()
-  }),
-  address: z.object({
-    street: z.string().optional(),
-    city: z.string().optional(),
-    state: z.string().optional(),
-    postalCode: z.string().optional(),
-    country: z.string().optional()
-  }).optional(),
+  phone: z.string(),
   dateOfBirth: z.date().optional(),
   age: z.number().optional(),
   nationality: z.string().optional(),
-  preferences: z.object({
-    roomType: z.string().optional(),
-    smokingRoom: z.boolean(),
-    floor: z.string(),
-    bedType: z.string(),
-    dietaryRestrictions: z.array(z.string()),
-    accessibility: z.array(z.string())
-  }),
+  emergencyContact: z.object({
+    name: z.string().optional(),
+    relationship: z.string().optional(),
+    phone: z.string().optional()
+  }).optional(),
   notes: z.string().optional(),
   vipStatus: z.boolean(),
   blacklisted: z.boolean(),

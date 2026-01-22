@@ -27,57 +27,9 @@ const guestSchema = new mongoose.Schema({
     ]
   },
   phone: {
-    primary: {
-      type: String,
-      required: [true, 'Primary phone number is required'],
-      trim: true
-    },
-    secondary: {
-      type: String,
-      trim: true
-    }
-  },
-  identification: {
-    type: {
-      type: String,
-      enum: ['passport', 'national_id', 'driver_license', 'other'],
-      required: [true, 'Identification type is required']
-    },
-    number: {
-      type: String,
-      required: [true, 'Identification number is required'],
-      trim: true
-    },
-    expiryDate: {
-      type: Date
-    },
-    issuingCountry: {
-      type: String,
-      trim: true
-    }
-  },
-  address: {
-    street: {
-      type: String,
-      trim: true
-    },
-    city: {
-      type: String,
-      trim: true
-    },
-    state: {
-      type: String,
-      trim: true
-    },
-    postalCode: {
-      type: String,
-      trim: true
-    },
-    country: {
-      type: String,
-      trim: true,
-      default: 'Mexico'
-    }
+    type: String,
+    required: [true, 'Phone number is required'],
+    trim: true
   },
   dateOfBirth: {
     type: Date
@@ -93,40 +45,13 @@ const guestSchema = new mongoose.Schema({
     },
     relationship: {
       type: String,
+      enum: ['spouse', 'parent', 'sibling', 'child', 'friend', 'other'],
       trim: true
     },
     phone: {
       type: String,
       trim: true
     }
-  },
-  preferences: {
-    roomType: {
-      type: String,
-      enum: ['room', 'suite', 'apartment']
-    },
-    smokingRoom: {
-      type: Boolean,
-      default: false
-    },
-    floor: {
-      type: String,
-      enum: ['ground', 'high', 'any'],
-      default: 'any'
-    },
-    bedType: {
-      type: String,
-      enum: ['single', 'double', 'queen', 'king', 'twin'],
-      default: 'double'
-    },
-    dietaryRestrictions: [{
-      type: String,
-      trim: true
-    }],
-    accessibility: [{
-      type: String,
-      trim: true
-    }]
   },
   notes: {
     type: String,
@@ -172,8 +97,7 @@ guestSchema.plugin(softDeletePlugin);
 
 // Indexes for performance and multi-tenant queries
 guestSchema.index({ tenantId: 1, email: 1 });
-guestSchema.index({ tenantId: 1, 'phone.primary': 1 });
-guestSchema.index({ tenantId: 1, 'identification.number': 1 });
+guestSchema.index({ tenantId: 1, phone: 1 });
 guestSchema.index({ tenantId: 1, firstName: 1, lastName: 1 });
 guestSchema.index({ tenantId: 1, vipStatus: 1 });
 guestSchema.index({ tenantId: 1, blacklisted: 1 });
@@ -254,22 +178,6 @@ guestSchema.methods.updateStayStats = function(amount) {
   return this.save();
 };
 
-// Instance method to get full address as string
-guestSchema.methods.getFullAddress = function() {
-  if (!this.address.street) return null;
-  const { street, city, state, postalCode, country } = this.address;
-  return [street, city, state, postalCode, country].filter(Boolean).join(', ');
-};
-
-// Static method to find guest by identification
-guestSchema.statics.findByIdentification = function(tenantId, idType, idNumber) {
-  return this.findOne({
-    tenantId,
-    'identification.type': idType,
-    'identification.number': idNumber,
-    isActive: true
-  });
-};
 
 // Static method to find VIP guests
 guestSchema.statics.findVIPGuests = function(tenantId) {
@@ -291,8 +199,7 @@ guestSchema.statics.searchGuests = function(tenantId, searchTerm) {
       { firstName: regex },
       { lastName: regex },
       { email: regex },
-      { 'phone.primary': regex },
-      { 'identification.number': regex }
+      { phone: regex }
     ]
   }).limit(50);
 };

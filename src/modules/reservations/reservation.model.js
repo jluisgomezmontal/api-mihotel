@@ -271,6 +271,16 @@ reservationSchema.pre('save', async function(next) {
     this.confirmationNumber = await this.constructor.generateConfirmationNumber();
   }
   
+  // Initialize paymentSummary if new
+  if (this.isNew && !this.paymentSummary) {
+    this.paymentSummary = {
+      totalPaid: 0,
+      remainingBalance: 0,
+      depositRequired: 0,
+      depositPaid: false
+    };
+  }
+  
   // Calculate pricing if not set
   if (this.isModified('dates') || this.isModified('guests')) {
     await this.calculatePricing();
@@ -285,11 +295,17 @@ reservationSchema.pre('save', async function(next) {
 // Pre-save middleware to validate dates
 reservationSchema.pre('save', function(next) {
   if (this.dates.checkInDate >= this.dates.checkOutDate) {
-    return next(new Error('Check-out date must be after check-in date'));
+    return next(new Error('La fecha de check-out debe ser posterior a la fecha de check-in'));
   }
   
-  if (this.dates.checkInDate < new Date().setHours(0, 0, 0, 0)) {
-    return next(new Error('Check-in date cannot be in the past'));
+  // Allow check-in for today by comparing dates without time
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const checkInDate = new Date(this.dates.checkInDate);
+  checkInDate.setHours(0, 0, 0, 0);
+  
+  if (checkInDate < today) {
+    return next(new Error('La fecha de check-in no puede ser anterior a hoy'));
   }
   
   next();

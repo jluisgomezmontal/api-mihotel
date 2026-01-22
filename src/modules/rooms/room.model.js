@@ -166,34 +166,52 @@ roomSchema.virtual('totalCapacity').get(function() {
 });
 
 // Instance method to check if room is available for date range
-roomSchema.methods.isAvailableForDateRange = async function(checkInDate, checkOutDate) {
+roomSchema.methods.isAvailableForDateRange = async function(checkInDate, checkOutDate, excludeReservationId = null) {
   if (this.status !== ROOM_STATUS.AVAILABLE) {
     return false;
   }
 
   const Reservation = mongoose.model('Reservation');
-  const conflictingReservations = await Reservation.countDocuments({
+  
+  // Normalize dates to start of day
+  const newCheckIn = new Date(checkInDate);
+  newCheckIn.setHours(0, 0, 0, 0);
+  const newCheckOut = new Date(checkOutDate);
+  newCheckOut.setHours(0, 0, 0, 0);
+  
+  // Build query
+  const query = {
     tenantId: this.tenantId,
     roomId: this._id,
     isActive: true,
-    status: { $in: ['confirmed', 'checked_in'] },
-    $or: [
-      {
-        checkInDate: { $lte: checkInDate },
-        checkOutDate: { $gt: checkInDate }
-      },
-      {
-        checkInDate: { $lt: checkOutDate },
-        checkOutDate: { $gte: checkOutDate }
-      },
-      {
-        checkInDate: { $gte: checkInDate },
-        checkOutDate: { $lte: checkOutDate }
-      }
-    ]
-  });
+    status: { $in: ['pending', 'confirmed', 'checked_in'] }, // Include pending reservations
+  };
+  
+  // Exclude specific reservation (for updates)
+  if (excludeReservationId) {
+    query._id = { $ne: excludeReservationId };
+  }
+  
+  // Find all reservations for this room
+  const existingReservations = await Reservation.find(query);
+  
+  // Check for conflicts with proper date logic
+  for (const res of existingReservations) {
+    const resCheckIn = new Date(res.dates.checkInDate);
+    resCheckIn.setHours(0, 0, 0, 0);
+    const resCheckOut = new Date(res.dates.checkOutDate);
+    resCheckOut.setHours(0, 0, 0, 0);
+    
+    // Conflict logic: room is occupied [checkIn, checkOut)
+    // No conflict if new check-in >= existing check-out OR new check-out <= existing check-in
+    if (newCheckIn.getTime() >= resCheckOut.getTime()) continue; // New reservation starts after existing ends
+    if (newCheckOut.getTime() <= resCheckIn.getTime()) continue; // New reservation ends before existing starts
+    
+    // If we reach here, there's a conflict
+    return false;
+  }
 
-  return conflictingReservations === 0;
+  return true;
 };
 
 // Instance method to calculate price for stay

@@ -9,39 +9,39 @@ const paymentSchema = new mongoose.Schema({
   reservationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Reservation',
-    required: [true, 'Reservation ID is required'],
+    required: [true, 'El ID de la reservación es requerido'],
     index: true
   },
   transactionId: {
     type: String,
     unique: true,
-    required: true,
+    required: [true, 'El ID de transacción es requerido'],
     uppercase: true
   },
   amount: {
     type: Number,
-    required: [true, 'Payment amount is required'],
-    min: [0.01, 'Payment amount must be greater than 0']
+    required: [true, 'El monto del pago es requerido'],
+    min: [0.01, 'El monto del pago debe ser mayor a 0']
   },
   currency: {
     type: String,
-    required: [true, 'Currency is required'],
-    default: 'USD',
-    maxlength: [3, 'Currency code cannot exceed 3 characters']
+    required: [true, 'La moneda es requerida'],
+    default: 'MXN',
+    maxlength: [3, 'El código de moneda no puede exceder 3 caracteres']
   },
   method: {
     type: String,
     enum: {
       values: Object.values(PAYMENT_METHODS),
-      message: 'Invalid payment method. Must be one of: {VALUES}'
+      message: 'Método de pago inválido. Debe ser uno de: {VALUES}'
     },
-    required: [true, 'Payment method is required']
+    required: [true, 'El método de pago es requerido']
   },
   status: {
     type: String,
     enum: {
       values: Object.values(PAYMENT_STATUS),
-      message: 'Invalid payment status. Must be one of: {VALUES}'
+      message: 'Estado de pago inválido. Debe ser uno de: {VALUES}'
     },
     default: PAYMENT_STATUS.PENDING,
     index: true
@@ -83,17 +83,17 @@ const paymentSchema = new mongoose.Schema({
     processingFee: {
       type: Number,
       default: 0,
-      min: [0, 'Processing fee cannot be negative']
+      min: [0, 'La comisión de procesamiento no puede ser negativa']
     },
     gatewayFee: {
       type: Number,
       default: 0,
-      min: [0, 'Gateway fee cannot be negative']
+      min: [0, 'La comisión de pasarela no puede ser negativa']
     }
   },
   netAmount: {
     type: Number,
-    required: true
+    required: [true, 'El monto neto es requerido']
   },
   paymentDate: {
     type: Date,
@@ -106,7 +106,7 @@ const paymentSchema = new mongoose.Schema({
   notes: {
     type: String,
     trim: true,
-    maxlength: [500, 'Notes cannot exceed 500 characters']
+    maxlength: [500, 'Las notas no pueden exceder 500 caracteres']
   },
   refund: {
     isRefunded: {
@@ -116,7 +116,7 @@ const paymentSchema = new mongoose.Schema({
     refundedAmount: {
       type: Number,
       default: 0,
-      min: [0, 'Refunded amount cannot be negative']
+      min: [0, 'El monto reembolsado no puede ser negativo']
     },
     refundedAt: {
       type: Date

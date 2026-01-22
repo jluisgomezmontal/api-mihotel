@@ -10,6 +10,10 @@ export const createPropertySchema = z.object({
     .max(200, 'Property name cannot exceed 200 characters')
     .trim(),
   
+  type: z.enum(['hotel', 'airbnb', 'posada'], {
+    errorMap: () => ({ message: 'Property type must be hotel, airbnb, or posada' })
+  }),
+  
   description: z.string()
     .max(1000, 'Description cannot exceed 1000 characters')
     .trim()
@@ -96,6 +100,7 @@ export const propertyResponseSchema = z.object({
   _id: z.string(),
   tenantId: z.string(),
   name: z.string(),
+  type: z.enum(['hotel', 'airbnb', 'posada']),
   description: z.string().optional(),
   address: z.object({
     street: z.string(),

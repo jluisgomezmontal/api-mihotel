@@ -3,6 +3,7 @@ import Room from '../rooms/room.model.js';
 import Guest from '../guests/guest.model.js';
 import Property from '../properties/property.model.js';
 import { HTTP_STATUS, RESERVATION_STATUS } from '../../config/constants.js';
+import { checkRoomAvailability, validateReservationDates, validateGuestCapacity } from './reservation.service.js';
 
 /**
  * Reservation Controller
@@ -28,7 +29,10 @@ export const getAllReservations = async (req, res) => {
     } = req.query;
     
     // Build query conditions
-    const conditions = { tenantId: req.user.tenantId };
+    const conditions = { 
+      tenantId: req.user.tenantId,
+      isActive: true  // Only show active reservations (exclude soft deleted)
+    };
     
     if (propertyId) conditions.propertyId = propertyId;
     if (roomId) conditions.roomId = roomId;
@@ -51,7 +55,6 @@ export const getAllReservations = async (req, res) => {
         .populate('propertyId', 'name address.city')
         .populate('roomId', 'nameOrNumber type')
         .populate('guestId', 'firstName lastName email phone')
-        .populate('payments')
         .skip(skip)
         .limit(parseInt(limit))
         .sort({ 'dates.checkInDate': -1 }),
@@ -73,9 +76,13 @@ export const getAllReservations = async (req, res) => {
 
   } catch (error) {
     console.error('Get reservations error:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: 'Failed to fetch reservations'
+      message: 'Failed to fetch reservations',
+      error: error.message
     });
   }
 };
@@ -94,8 +101,7 @@ export const getReservationById = async (req, res) => {
     })
     .populate('propertyId')
     .populate('roomId')
-    .populate('guestId')
-    .populate('payments');
+    .populate('guestId');
 
     if (!reservation) {
       return res.status(HTTP_STATUS.NOT_FOUND).json({
@@ -124,14 +130,47 @@ export const getReservationById = async (req, res) => {
  */
 export const createReservation = async (req, res) => {
   try {
-    const reservationData = {
-      ...req.body,
+    const reservationData = req.body;
+    
+    console.log('🆕 Creating new reservation with data:', {
+      propertyId: reservationData.propertyId,
+      roomId: reservationData.roomId,
+      guestId: reservationData.guestId,
+      checkInDate: reservationData.dates?.checkInDate,
+      checkOutDate: reservationData.dates?.checkOutDate,
       tenantId: req.user.tenantId
-    };
+    });
+    
+    // 1. Validar fechas
+    const checkInDate = new Date(reservationData.dates.checkInDate);
+    const checkOutDate = new Date(reservationData.dates.checkOutDate);
+    
+    const dateValidation = validateReservationDates(checkInDate, checkOutDate);
+    if (!dateValidation.valid) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: dateValidation.message
+      });
+    }
 
-    // Validate room availability
+    // 2. Validar que la propiedad existe y pertenece al tenant
+    const property = await Property.findOne({
+      _id: reservationData.propertyId,
+      tenantId: req.user.tenantId,
+      isActive: true
+    });
+
+    if (!property) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        success: false,
+        message: '🏨 Propiedad no encontrada.'
+      });
+    }
+
+    // 3. Validar que la habitación existe y pertenece a la propiedad
     const room = await Room.findOne({
       _id: reservationData.roomId,
+      propertyId: reservationData.propertyId,
       tenantId: req.user.tenantId,
       isActive: true
     });
@@ -139,63 +178,367 @@ export const createReservation = async (req, res) => {
     if (!room) {
       return res.status(HTTP_STATUS.NOT_FOUND).json({
         success: false,
-        message: 'Room not found'
+        message: '🚪 Habitación no encontrada o no disponible.'
       });
     }
 
-    // Check if room is available for the date range
-    const isAvailable = await room.isAvailableForDateRange(
-      reservationData.dates.checkInDate,
-      reservationData.dates.checkOutDate
-    );
+    // 4. Validar que el huésped existe
+    const guest = await Guest.findOne({
+      _id: reservationData.guestId,
+      tenantId: req.user.tenantId,
+      isActive: true
+    });
 
-    if (!isAvailable) {
-      return res.status(HTTP_STATUS.CONFLICT).json({
+    if (!guest) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
         success: false,
-        message: 'Room is not available for the selected dates'
+        message: '👤 Huésped no encontrado.'
       });
     }
 
-    // Validate guest capacity
-    const totalGuests = reservationData.guests.adults + (reservationData.guests.children || 0);
-    if (totalGuests > room.totalCapacity) {
+    // 5. Validar capacidad de huéspedes
+    const adults = reservationData.guests?.adults || 1;
+    const children = reservationData.guests?.children || 0;
+    
+    const capacityValidation = validateGuestCapacity({ adults, children, room });
+    if (!capacityValidation.valid) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: 'Guest count exceeds room capacity'
+        message: capacityValidation.message
       });
     }
 
-    // Create reservation
-    const reservation = new Reservation(reservationData);
+    // 6. Verificar disponibilidad de la habitación (solapamiento de reservas)
+    console.log('🔍 Validating room availability before creating reservation...');
+    const availabilityCheck = await checkRoomAvailability({
+      roomId: reservationData.roomId,
+      checkInDate,
+      checkOutDate,
+      tenantId: req.user.tenantId
+    });
+
+    if (!availabilityCheck.available) {
+      const conflicting = availabilityCheck.conflictingReservation;
+      return res.status(HTTP_STATUS.CONFLICT).json({
+        success: false,
+        message: `❌ La habitación "${room.nameOrNumber}" ya está reservada en esas fechas.\n\nReserva existente:\n• Check-in: ${new Date(conflicting.dates.checkInDate).toLocaleDateString('es-MX')}\n• Check-out: ${new Date(conflicting.dates.checkOutDate).toLocaleDateString('es-MX')}\n• Confirmación: ${conflicting.confirmationNumber}\n• Estado: ${conflicting.status}`
+      });
+    }
+    console.log('✅ Room is available, proceeding with reservation creation');
+
+    // 7. Generar número de confirmación
+    const confirmationNumber = await Reservation.generateConfirmationNumber();
+    
+    // 8. Crear reservación
+    const reservation = new Reservation({
+      ...reservationData,
+      tenantId: req.user.tenantId,
+      confirmationNumber,
+      dates: {
+        checkInDate,
+        checkOutDate
+      },
+      guests: {
+        adults,
+        children: children || 0
+      }
+    });
+    
     const savedReservation = await reservation.save();
 
-    // Populate related data for response
+    // 9. Popular datos relacionados para la respuesta
     await savedReservation.populate([
-      { path: 'propertyId', select: 'name' },
-      { path: 'roomId', select: 'nameOrNumber type' },
-      { path: 'guestId', select: 'firstName lastName email' }
+      { path: 'propertyId', select: 'name address' },
+      { path: 'roomId', select: 'nameOrNumber type pricing' },
+      { path: 'guestId', select: 'firstName lastName email phone' }
     ]);
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
-      message: 'Reservation created successfully',
+      message: '✅ Reserva creada exitosamente',
       data: { reservation: savedReservation }
     });
 
   } catch (error) {
-    console.error('Create reservation error:', error);
+    console.error('❌ Create reservation error:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     
     if (error.name === 'ValidationError') {
+      const errorMessages = Object.values(error.errors).map(e => e.message).join('\n');
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: 'Validation error',
-        errors: Object.values(error.errors).map(e => e.message)
+        message: `⚠️ Error de validación:\n${errorMessages}`
       });
     }
 
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: 'Failed to create reservation'
+      message: '🔥 Error interno del servidor. Por favor intenta de nuevo.',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update reservation
+ * PUT /api/reservations/:reservationId
+ */
+export const updateReservation = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const updateData = req.body;
+
+    // 1. Buscar la reservación existente
+    const reservation = await Reservation.findOne({
+      _id: reservationId,
+      tenantId: req.user.tenantId
+    });
+
+    if (!reservation) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        success: false,
+        message: '📋 Reservación no encontrada.'
+      });
+    }
+
+    // 2. Validar fechas si se están actualizando
+    let checkInDate = reservation.dates.checkInDate;
+    let checkOutDate = reservation.dates.checkOutDate;
+    
+    if (updateData.dates?.checkInDate) {
+      checkInDate = new Date(updateData.dates.checkInDate);
+      if (isNaN(checkInDate.getTime())) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: '📅 Fecha de entrada inválida.'
+        });
+      }
+    }
+    
+    if (updateData.dates?.checkOutDate) {
+      checkOutDate = new Date(updateData.dates.checkOutDate);
+      if (isNaN(checkOutDate.getTime())) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: '📅 Fecha de salida inválida.'
+        });
+      }
+    }
+    
+    if (checkOutDate.getTime() <= checkInDate.getTime()) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: '📅 La fecha de salida debe ser posterior a la fecha de entrada.'
+      });
+    }
+
+    // 3. Validar habitación si se está cambiando
+    let room;
+    const roomId = updateData.roomId || reservation.roomId;
+    
+    room = await Room.findOne({
+      _id: roomId,
+      tenantId: req.user.tenantId,
+      isActive: true
+    });
+
+    if (!room) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        success: false,
+        message: '🚪 Habitación no encontrada o no disponible.'
+      });
+    }
+
+    // 4. Validar huésped si se está cambiando
+    if (updateData.guestId) {
+      const guest = await Guest.findOne({
+        _id: updateData.guestId,
+        tenantId: req.user.tenantId,
+        isActive: true
+      });
+
+      if (!guest) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          message: '👤 Huésped no encontrado.'
+        });
+      }
+    }
+
+    // 5. Validar capacidad si se están actualizando los huéspedes
+    const adults = updateData.guests?.adults || reservation.guests.adults || 1;
+    const children = updateData.guests?.children || reservation.guests.children || 0;
+    
+    const capacityValidation = validateGuestCapacity({ adults, children, room });
+    if (!capacityValidation.valid) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: capacityValidation.message
+      });
+    }
+
+    // 6. Verificar disponibilidad si cambiaron fechas o habitación
+    if (updateData.dates || updateData.roomId) {
+      console.log('🔍 Validating room availability before updating reservation...');
+      const availabilityCheck = await checkRoomAvailability({
+        roomId: roomId,
+        checkInDate,
+        checkOutDate,
+        tenantId: req.user.tenantId,
+        excludeReservationId: reservationId
+      });
+
+      if (!availabilityCheck.available) {
+        const conflicting = availabilityCheck.conflictingReservation;
+        return res.status(HTTP_STATUS.CONFLICT).json({
+          success: false,
+          message: `❌ La habitación "${room.nameOrNumber}" ya está reservada en esas fechas.\n\nReserva existente:\n• Check-in: ${new Date(conflicting.dates.checkInDate).toLocaleDateString('es-MX')}\n• Check-out: ${new Date(conflicting.dates.checkOutDate).toLocaleDateString('es-MX')}\n• Confirmación: ${conflicting.confirmationNumber}\n• Estado: ${conflicting.status}`
+        });
+      }
+      console.log('✅ Room is available, proceeding with reservation update');
+    }
+
+    // 7. Actualizar campos
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] !== undefined && key !== 'tenantId' && key !== 'confirmationNumber') {
+        reservation[key] = updateData[key];
+      }
+    });
+    
+    // Asegurar que las fechas se actualicen correctamente
+    if (updateData.dates) {
+      reservation.dates.checkInDate = checkInDate;
+      reservation.dates.checkOutDate = checkOutDate;
+    }
+    
+    // Asegurar que los huéspedes se actualicen correctamente
+    if (updateData.guests) {
+      reservation.guests.adults = adults;
+      reservation.guests.children = children;
+    }
+
+    const updatedReservation = await reservation.save();
+
+    await updatedReservation.populate([
+      { path: 'propertyId', select: 'name address' },
+      { path: 'roomId', select: 'nameOrNumber type pricing' },
+      { path: 'guestId', select: 'firstName lastName email phone' }
+    ]);
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: '✅ Reservación actualizada correctamente',
+      data: { reservation: updatedReservation }
+    });
+
+  } catch (error) {
+    console.error('❌ Update reservation error:', error);
+    
+    if (error.name === 'ValidationError') {
+      const errorMessages = Object.values(error.errors).map(e => e.message).join('\n');
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: `⚠️ Error de validación:\n${errorMessages}`
+      });
+    }
+
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: '🔥 Error interno del servidor. Por favor intenta de nuevo.',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Delete reservation (soft delete)
+ * DELETE /api/reservations/:reservationId
+ */
+export const deleteReservation = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+
+    const reservation = await Reservation.findOne({
+      _id: reservationId,
+      tenantId: req.user.tenantId
+    });
+
+    if (!reservation) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        success: false,
+        message: 'Reservation not found'
+      });
+    }
+
+    // Soft delete
+    reservation.isActive = false;
+    await reservation.save();
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Reservation deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete reservation error:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Failed to delete reservation',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Confirm reservation
+ * PUT /api/reservations/:reservationId/confirm
+ */
+export const confirmReservation = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+
+    const reservation = await Reservation.findOne({
+      _id: reservationId,
+      tenantId: req.user.tenantId
+    });
+
+    if (!reservation) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        success: false,
+        message: 'Reservation not found'
+      });
+    }
+
+    if (reservation.status !== RESERVATION_STATUS.PENDING) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: 'Only pending reservations can be confirmed'
+      });
+    }
+
+    reservation.status = RESERVATION_STATUS.CONFIRMED;
+    await reservation.save();
+
+    await reservation.populate([
+      { path: 'propertyId', select: 'name' },
+      { path: 'roomId', select: 'nameOrNumber type' },
+      { path: 'guestId', select: 'firstName lastName email' }
+    ]);
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Reservation confirmed successfully',
+      data: { reservation }
+    });
+
+  } catch (error) {
+    console.error('Confirm reservation error:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Failed to confirm reservation',
+      error: error.message
     });
   }
 };

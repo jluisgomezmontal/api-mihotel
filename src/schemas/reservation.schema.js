@@ -49,13 +49,24 @@ export const createReservationSchema = z.object({
   pricing: z.object({
     roomRate: z.number()
       .positive('Room rate must be positive'),
+    nights: z.number()
+      .int('Nights must be an integer')
+      .min(1, 'At least 1 night is required'),
+    subtotal: z.number()
+      .min(0, 'Subtotal cannot be negative'),
+    taxes: z.number()
+      .min(0, 'Taxes cannot be negative')
+      .optional()
+      .default(0),
     fees: z.object({
-      cleaning: z.number().min(0, 'Cleaning fee cannot be negative').optional(),
-      service: z.number().min(0, 'Service fee cannot be negative').optional(),
-      extra: z.number().min(0, 'Extra fees cannot be negative').optional()
+      cleaning: z.number().min(0, 'Cleaning fee cannot be negative').optional().default(0),
+      service: z.number().min(0, 'Service fee cannot be negative').optional().default(0),
+      extra: z.number().min(0, 'Extra fees cannot be negative').optional().default(0)
     }).optional(),
-    currency: z.string().length(3, 'Currency must be 3 characters').optional()
-  }).optional(),
+    totalPrice: z.number()
+      .min(0, 'Total price cannot be negative'),
+    currency: z.string().length(3, 'Currency must be 3 characters').optional().default('USD')
+  }),
   
   source: z.enum(['direct', 'booking_com', 'airbnb', 'expedia', 'phone', 'walk_in', 'other']).optional(),
   

@@ -3,6 +3,9 @@ import {
   getAllReservations,
   getReservationById,
   createReservation,
+  updateReservation,
+  deleteReservation,
+  confirmReservation,
   checkInGuest,
   checkOutGuest,
   cancelReservation,
@@ -80,6 +83,40 @@ router.get('/:reservationId',
   requirePermission('canManageReservations'),
   validate(reservationParamsSchema, 'params'),
   getReservationById
+);
+
+/**
+ * @route   PUT /api/reservations/:reservationId
+ * @desc    Update reservation
+ * @access  Private (requires canManageReservations permission)
+ */
+router.put('/:reservationId',
+  requirePermission('canManageReservations'),
+  validate(reservationParamsSchema, 'params'),
+  validate(updateReservationSchema),
+  updateReservation
+);
+
+/**
+ * @route   DELETE /api/reservations/:reservationId
+ * @desc    Delete reservation (soft delete)
+ * @access  Private (requires canManageReservations permission)
+ */
+router.delete('/:reservationId',
+  requirePermission('canManageReservations'),
+  validate(reservationParamsSchema, 'params'),
+  deleteReservation
+);
+
+/**
+ * @route   PUT /api/reservations/:reservationId/confirm
+ * @desc    Confirm reservation
+ * @access  Private (requires canManageReservations permission)
+ */
+router.put('/:reservationId/confirm',
+  requirePermission('canManageReservations'),
+  validate(reservationParamsSchema, 'params'),
+  confirmReservation
 );
 
 /**
