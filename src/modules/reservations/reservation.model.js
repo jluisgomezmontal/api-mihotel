@@ -323,15 +323,14 @@ reservationSchema.methods.calculatePricing = async function() {
   this.pricing.nights = this.nights;
   this.pricing.roomRate = room.pricing.basePrice;
   
-  // Calculate room cost
+  // Calculate room cost (price already includes IVA)
   let roomCost = room.calculatePrice(this.pricing.nights, this.guests.adults, this.guests.children);
   
-  // Calculate taxes (assuming 16% tax rate)
-  const taxRate = 0.16;
-  this.pricing.taxes = roomCost * taxRate;
+  // No additional taxes - room price already includes IVA
+  this.pricing.taxes = 0;
   
   this.pricing.subtotal = roomCost;
-  this.pricing.totalPrice = roomCost + this.pricing.taxes + 
+  this.pricing.totalPrice = roomCost + 
                            this.pricing.fees.cleaning + 
                            this.pricing.fees.service + 
                            this.pricing.fees.extra;

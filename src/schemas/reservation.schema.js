@@ -70,6 +70,10 @@ export const createReservationSchema = z.object({
   
   source: z.enum(['direct', 'booking_com', 'airbnb', 'expedia', 'phone', 'walk_in', 'other']).optional(),
   
+  status: z.enum(Object.values(RESERVATION_STATUS), {
+    errorMap: () => ({ message: `Status must be one of: ${Object.values(RESERVATION_STATUS).join(', ')}` })
+  }).optional(),
+  
   specialRequests: z.string()
     .max(1000, 'Special requests cannot exceed 1000 characters')
     .trim()

@@ -229,18 +229,31 @@ export const createReservation = async (req, res) => {
     // 7. Generar número de confirmación
     const confirmationNumber = await Reservation.generateConfirmationNumber();
     
-    // 8. Crear reservación
+    // 8. Determinar el estado inicial y timestamps
+    const isDirectCheckIn = reservationData.status === 'checked_in';
+    const reservationStatus = isDirectCheckIn ? 'checked_in' : 'pending';
+    
+    // 9. Crear reservación
     const reservation = new Reservation({
       ...reservationData,
       tenantId: req.user.tenantId,
       confirmationNumber,
+      status: reservationStatus,
       dates: {
         checkInDate,
-        checkOutDate
+        checkOutDate,
+        ...(isDirectCheckIn && { actualCheckInDate: new Date() })
       },
       guests: {
         adults,
         children: children || 0
+      },
+      timestamps: {
+        bookedAt: new Date(),
+        ...(isDirectCheckIn && { 
+          confirmedAt: new Date(),
+          checkedInAt: new Date()
+        })
       }
     });
     
@@ -253,9 +266,13 @@ export const createReservation = async (req, res) => {
       { path: 'guestId', select: 'firstName lastName email phone' }
     ]);
 
+    const successMessage = isDirectCheckIn 
+      ? '✅ Reserva creada exitosamente con check-in directo. El huésped ya está registrado.'
+      : '✅ Reserva creada exitosamente';
+    
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
-      message: '✅ Reserva creada exitosamente',
+      message: successMessage,
       data: { reservation: savedReservation }
     });
 
