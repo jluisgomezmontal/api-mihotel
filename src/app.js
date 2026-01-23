@@ -26,6 +26,7 @@ import guestRoutes from './modules/guests/guest.routes.js';
 import reservationRoutes from './modules/reservations/reservation.routes.js';
 import userRoutes from './modules/users/user.routes.js';
 import paymentRoutes from './modules/payments/payment.routes.js';
+import reportRoutes from './modules/reports/report.routes.js';
 
 // Load environment variables
 dotenv.config();
@@ -99,9 +100,7 @@ app.use('/api/guests', guestRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/payments', paymentRoutes);
-
-// TODO: Add remaining route modules
-// app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports', reportRoutes);
 
 // =================================
 // API DOCUMENTATION (Future)
