@@ -259,7 +259,18 @@ export const createReservation = async (req, res) => {
     
     const savedReservation = await reservation.save();
 
-    // 9. Popular datos relacionados para la respuesta
+    // 10. Si es check-in directo, actualizar estado de habitación y estadísticas del huésped
+    if (isDirectCheckIn) {
+      console.log('✅ Direct check-in: updating room status to occupied');
+      await Room.findByIdAndUpdate(reservation.roomId, { status: 'occupied' });
+      
+      // Actualizar estadísticas del huésped
+      if (guest) {
+        await guest.updateStayStats(reservation.pricing.totalPrice);
+      }
+    }
+
+    // 11. Popular datos relacionados para la respuesta
     await savedReservation.populate([
       { path: 'propertyId', select: 'name address' },
       { path: 'roomId', select: 'nameOrNumber type pricing' },
