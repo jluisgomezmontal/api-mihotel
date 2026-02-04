@@ -59,11 +59,13 @@ export const registerTenant = async (req, res) => {
       tenantId: savedTenant._id,
       name: admin.name,
       email: admin.email,
-      passwordHash: admin.password,
       role: USER_ROLES.ADMIN,
       profile: admin.profile || {},
       isEmailVerified: true // Auto-verify for tenant admin
     });
+
+    // Set password after creation to trigger pre-save hook properly
+    adminUser.passwordHash = admin.password;
 
     const savedUser = await adminUser.save();
 
