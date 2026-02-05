@@ -27,6 +27,7 @@ import reservationRoutes from './modules/reservations/reservation.routes.js';
 import userRoutes from './modules/users/user.routes.js';
 import paymentRoutes from './modules/payments/payment.routes.js';
 import reportRoutes from './modules/reports/report.routes.js';
+import tenantRoutes from './modules/tenants/tenant.routes.js';
 
 // Load environment variables
 dotenv.config();
@@ -101,6 +102,7 @@ app.use('/api/reservations', reservationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/tenants', tenantRoutes);
 
 // =================================
 // API DOCUMENTATION (Future)
