@@ -298,14 +298,17 @@ reservationSchema.pre('save', function(next) {
     return next(new Error('La fecha de check-out debe ser posterior a la fecha de check-in'));
   }
   
-  // Allow check-in for today by comparing dates without time
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const checkInDate = new Date(this.dates.checkInDate);
-  checkInDate.setHours(0, 0, 0, 0);
-  
-  if (checkInDate < today) {
-    return next(new Error('La fecha de check-in no puede ser anterior a hoy'));
+  // Only validate check-in date for new reservations or when dates are being modified
+  // Skip validation for status changes (like checkout) on existing reservations
+  if (this.isNew || this.isModified('dates.checkInDate')) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkInDate = new Date(this.dates.checkInDate);
+    checkInDate.setHours(0, 0, 0, 0);
+    
+    if (checkInDate < today) {
+      return next(new Error('La fecha de check-in no puede ser anterior a hoy'));
+    }
   }
   
   next();
